@@ -7,6 +7,10 @@ import binascii
 import json
 import os
 import math
+import sys
+sys.path.append(os.path.abspath('../utils'))
+import utils
+import base64
 
 logger = logging.getLogger('root')
 FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
@@ -29,6 +33,9 @@ CHUNK_SIZE = 1024 * 4
 
 class MediaServer(resource.Resource):
     isLeaf = True
+
+    def __init__(self):
+        self.server_nonce = None
 
     # Send the list of media files to clients
     def do_list(self, request):
@@ -118,6 +125,72 @@ class MediaServer(resource.Resource):
         request.responseHeaders.addRawHeader(b"content-type", b"application/json")
         return json.dumps({'error': 'unknown'}, indent=4).encode('latin')
 
+    def server_authenticate(self, request):
+        dict = request.content.read()
+        data = json.loads(dict)
+
+        client_nonce = base64.b64decode(data["nonce"].encode())
+        
+        private_key = utils.load_private_key_file("../server_pk/SIOServerCertKey.pem")
+        signed_client_nonce = utils.sign_with_pk(private_key, client_nonce)
+        certificate_ca = utils.load_cert_from_disk("../server_ca/SIOServerCA.pem")
+        certificate = utils.load_cert_from_disk("../server_cert/SIOServerCert.pem")
+
+        self.server_nonce = os.urandom(64)
+
+        return json.dumps({
+                "server_certificate": base64.b64encode(certificate).decode(),
+                "signed_client_nonce": base64.b64encode(signed_client_nonce).decode(),
+                "server_nonce": base64.b64encode(self.server_nonce).decode()
+            }).encode('latin')
+
+    def client_authenticate(self, request):
+        dict = request.content.read()
+        data = json.loads(dict)
+
+        signed_server_nonce = base64.b64decode(data["signed_server_nonce"].encode())
+        
+        client_cc_certificate = utils.certificate_object(base64.b64decode(data["client_cc_certificate"].encode()))
+
+
+        path = "../cc_certificates"
+        certificates={}
+        
+        for filename in os.listdir(path):
+            if filename.endswith(".pem"): 
+                cert = utils.load_cert_from_disk(os.path.join(path, filename))
+                certificates[cert.subject.rfc4514_string()] = cert
+        
+        chain = []
+        chain_completed = utils.construct_certificate_chain(chain, client_cc_certificate, certificates)
+
+        if not chain_completed:
+            logger.debug(f"Couldn't complete the certificate chain")
+            status = False
+
+        else:
+            valid_chain, error_messages = utils.validate_certificate_chain(chain)
+
+            if not valid_chain:
+                logger.error(error_messages)
+                status = False
+            else:
+                status = utils.verify_signature(client_cc_certificate, signed_server_nonce, self.server_nonce)
+
+        # if status:
+        #     oid = ObjectIdentifier("2.5.4.5")                                           # oid of citizens card's CI (civil id)
+        #     self.user_id = cc_certificate.subject.get_attributes_for_oid(oid)[0].value
+
+        #     logger.info("User logged in with success")
+        #     message = {
+        #         "type": "OK"
+        #     }
+
+        return json.dumps({
+                "status":status
+            }).encode('latin')
+            
+
     # Handle a GET request
     def render_GET(self, request):
         logger.debug(f'Received request for {request.uri}')
@@ -127,7 +200,6 @@ class MediaServer(resource.Resource):
                 return self.do_get_protocols(request)
             #elif request.uri == 'api/key':
             #...
-            #elif request.uri == 'api/auth':
 
             elif request.path == b'/api/list':
                 return self.do_list(request)
@@ -147,8 +219,20 @@ class MediaServer(resource.Resource):
     # Handle a POST request
     def render_POST(self, request):
         logger.debug(f'Received POST for {request.uri}')
-        request.setResponseCode(501)
-        return b''
+        try:
+            if request.uri == b'/api/server_auth':
+                return self.server_authenticate(request)
+            elif request.uri == b'/api/client_auth':
+                return self.client_authenticate(request)
+            else:
+                request.responseHeaders.addRawHeader(b"content-type", b'text/plain')
+                return b'Methods: /api/protocols /api/list /api/download'
+
+        except Exception as e:
+            logger.exception(e)
+            request.setResponseCode(500)
+            request.responseHeaders.addRawHeader(b"content-type", b"text/plain")
+            return b''
 
 
 print("Server started")
