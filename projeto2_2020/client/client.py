@@ -74,11 +74,9 @@ def auth():
     data = req.json()
     if data["status"]:
         logger.debug(f"Sucessfully authenticated CC")
-        print("bru")
         return True
     else:
         logger.debug(f"Could not authenticated CC")
-        print("bruhbdsud")
         return False
 
     

@@ -158,7 +158,8 @@ class MediaServer(resource.Resource):
         
         for filename in os.listdir(path):
             if filename.endswith(".pem"): 
-                cert = utils.load_cert_from_disk(os.path.join(path, filename))
+                cert_data = utils.load_cert_from_disk(os.path.join(path, filename))
+                cert = utils.certificate_object_from_pem(cert_data)
                 certificates[cert.subject.rfc4514_string()] = cert
         
         chain = []
@@ -177,14 +178,12 @@ class MediaServer(resource.Resource):
             else:
                 status = utils.verify_signature(client_cc_certificate, signed_server_nonce, self.server_nonce)
 
-        # if status:
-        #     oid = ObjectIdentifier("2.5.4.5")                                           # oid of citizens card's CI (civil id)
-        #     self.user_id = cc_certificate.subject.get_attributes_for_oid(oid)[0].value
+        if status:
+            # oid = ObjectIdentifier("2.5.4.5")                                           # oid of citizens card's CI (civil id)
+            # self.user_id = cc_certificate.subject.get_attributes_for_oid(oid)[0].value
 
-        #     logger.info("User logged in with success")
-        #     message = {
-        #         "type": "OK"
-        #     }
+            logger.debug(f"User logged in with success")
+            
 
         return json.dumps({
                 "status":status
