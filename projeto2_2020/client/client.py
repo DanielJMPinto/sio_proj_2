@@ -6,6 +6,10 @@ import os
 import subprocess
 import time
 import sys
+sys.path.append(os.path.abspath('../utils'))
+import utils
+import PyKCS11
+import base64
 
 logger = logging.getLogger('root')
 FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
@@ -13,6 +17,73 @@ logging.basicConfig(format=FORMAT)
 logger.setLevel(logging.INFO)
 
 SERVER_URL = 'http://127.0.0.1:8080'
+
+def auth():
+    client_nonce = os.urandom(64)
+    
+    req = requests.post(f'{SERVER_URL}/api/server_auth', data=json.dumps({"nonce":base64.b64encode(client_nonce).decode()}).encode())
+    if req.status_code == 200:
+       logger.debug(f"Got Server Certs and Signed Nonce")
+    
+    data = req.json()
+
+    server_nonce = base64.b64decode(data["server_nonce"].encode())
+
+    server_certificate = utils.certificate_object_from_pem(base64.b64decode(data["server_certificate"].encode()))
+    signed_client_nonce = base64.b64decode(data["signed_client_nonce"].encode())
+
+    cert_data = utils.load_cert_from_disk("../server_ca/SIOServerCA.pem")
+    cert = utils.certificate_object_from_pem(cert_data)
+
+    certificates={}
+    certificates[cert.subject.rfc4514_string()] = cert
+
+    chain=[]
+    chain_completed = utils.construct_certificate_chain(chain, server_certificate, certificates)
+    
+    if not chain_completed:
+        logger.debug(f"Couldn't complete the certificate chain")
+        return False
+        
+    else:
+        valid_chain, error_messages = utils.validate_certificate_chain(chain)
+
+        if not valid_chain:
+            logger.debug(error_messages)
+            return False  
+        else:
+            if not utils.verify_signature(server_certificate, signed_client_nonce, client_nonce):
+                return False
+    
+    #cc
+    session_success, session_data = utils.cc_session()
+
+    if not session_success:
+        logger.debug(f"Error establishing a new citizen card session: {session_data}")
+        return False
+    
+    client_certs = {}
+    client_certs["client_cc_certificate"] = base64.b64encode(utils.certificate_cc(session_data)).decode()
+    client_certs["signed_server_nonce"] = base64.b64encode(utils.sign_nonce_cc(session_data, server_nonce)).decode()
+    
+
+    req = requests.post(f'{SERVER_URL}/api/client_auth', data=json.dumps(client_certs).encode())
+    if req.status_code == 200:
+       logger.debug(f"Got Server Certs and Signed Nonce")
+    
+    data = req.json()
+    if data["status"]:
+        logger.debug(f"Sucessfully authenticated CC")
+        print("bru")
+        return True
+    else:
+        logger.debug(f"Could not authenticated CC")
+        print("bruhbdsud")
+        return False
+
+    
+
+
 
 def main():
     print("|--------------------------------------|")
@@ -77,5 +148,17 @@ def main():
 
 if __name__ == '__main__':
     while True:
+        auth()
+        
         main()
         time.sleep(1)
+        # try:
+        #     auth()
+        #     main()
+        #     time.sleep(1)
+        # except Exception as e :
+        #     print(e)
+        #     sys.exit(0)
+
+        
+        
