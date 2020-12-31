@@ -25,6 +25,8 @@ def auth():
     if req.status_code == 200:
        logger.debug(f"Got Server Certs and Signed Nonce")
     
+    
+    #validate server certs
     data = req.json()
 
     server_nonce = base64.b64decode(data["server_nonce"].encode())
@@ -55,7 +57,7 @@ def auth():
             if not utils.verify_signature(server_certificate, signed_client_nonce, client_nonce):
                 return False
     
-    #cc
+    #send cc info
     session_success, session_data = utils.cc_session()
 
     if not session_success:
@@ -67,6 +69,7 @@ def auth():
     client_certs["signed_server_nonce"] = base64.b64encode(utils.sign_nonce_cc(session_data, server_nonce)).decode()
     
 
+    #finalize auth
     req = requests.post(f'{SERVER_URL}/api/client_auth', data=json.dumps(client_certs).encode())
     if req.status_code == 200:
        logger.debug(f"Got Server Certs and Signed Nonce")
@@ -92,10 +95,17 @@ def main():
     print("Contacting Server")
     
     # TODO: Secure the session
+    headers = {"Authorization" : 'True'}
 
-    req = requests.get(f'{SERVER_URL}/api/list')
+    request = requests.Session()
+    request.headers.update(headers)
+    
+    req = request.get(f'{SERVER_URL}/api/list')
     if req.status_code == 200:
         print("Got Server List")
+    else:
+        print(req.json())
+        sys.exit(0)
 
     media_list = req.json()
 
@@ -133,7 +143,7 @@ def main():
 
     # Get data from server and send it to the ffplay stdin through a pipe
     for chunk in range(media_item['chunks'] + 1):
-        req = requests.get(f'{SERVER_URL}/api/download?id={media_item["id"]}&chunk={chunk}')
+        req = request.get(f'{SERVER_URL}/api/download?id={media_item["id"]}&chunk={chunk}')
         chunk = req.json()
        
         # TODO: Process chunk
@@ -146,10 +156,10 @@ def main():
 
 if __name__ == '__main__':
     while True:
-        auth()
-        
-        main()
-        time.sleep(1)
+        auth_result = auth()
+        if auth_result:
+            main()
+            time.sleep(1)
         # try:
         #     auth()
         #     main()

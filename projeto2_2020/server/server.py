@@ -40,10 +40,10 @@ class MediaServer(resource.Resource):
     # Send the list of media files to clients
     def do_list(self, request):
 
-        #auth = request.getHeader('Authorization')
-        #if not auth:
-        #    request.setResponseCode(401)
-        #    return 'Not authorized'
+        auth = request.getHeader('Authorization')
+        if not auth:
+           request.setResponseCode(401)
+           return json.dumps('Not authorized').encode()
 
 
         # Build list
@@ -65,6 +65,12 @@ class MediaServer(resource.Resource):
 
     # Send a media chunk to the client
     def do_download(self, request):
+
+        auth = request.getHeader('Authorization')
+        if not auth:
+           request.setResponseCode(401)
+           return json.dumps('Not authorized').encode()
+
         logger.debug(f'Download: args: {request.args}')
         
         media_id = request.args.get(b'id', [None])[0]

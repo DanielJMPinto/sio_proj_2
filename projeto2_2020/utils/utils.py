@@ -1,25 +1,15 @@
 import os
-import binascii
-import random
 import PyKCS11
 from datetime import datetime
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import hashes, hmac
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.backends.interfaces import CipherBackend
-from cryptography.hazmat.primitives.asymmetric import dh, padding
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography import x509
-from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.x509.oid import ExtensionOID
 from cryptography.exceptions import InvalidSignature
-from cryptography.x509 import ocsp
 from cryptography.hazmat.primitives import serialization
-from cryptography.x509.extensions import CRLDistributionPoints,AuthorityInformationAccess
-from cryptography.hazmat.primitives.hashes import SHA1
+from cryptography.x509.extensions import CRLDistributionPoints
 import requests
-
 
 def cc_session():
     try:
@@ -150,7 +140,6 @@ def is_certificate_revoked(serial_number, crl_url):
     return crl.get_revoked_certificate_by_serial_number(serial_number) is not None
 
 
-# mWLLjqFfm2ArJ8drgABM6cu84ABc
 def validate_revocation_certificate_chain_crl(chain, error_messages):
     for i in range(1, len(chain)):
         subject = chain[i - 1]
