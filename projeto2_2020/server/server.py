@@ -141,7 +141,6 @@ class MediaServer(resource.Resource):
         
         private_key = utils.load_private_key_file("../server_pk/SIOServerCertKey.pem")
         signed_client_nonce = utils.sign_with_pk(private_key, client_nonce)
-        certificate_ca = utils.load_cert_from_disk("../server_ca/SIOServerCA.pem")
         certificate = utils.load_cert_from_disk("../server_cert/SIOServerCert.pem")
 
         self.server_nonce = os.urandom(64)

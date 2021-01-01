@@ -91,8 +91,8 @@ def validate_certificate_chain(chain):
     error_messages = []
     try:
         # taking advantage of the python's lazy evaluation, we could define the validation order just with this instruction
-        return (#validate_purpose_certificate_chain(chain,error_messages) and
-                validate_validity_certificate_chain(chain, error_messages) 
+        return (validate_purpose_certificate_chain(chain,error_messages)
+                and validate_validity_certificate_chain(chain, error_messages) 
                 and validate_revocation_certificate_chain_crl(chain,error_messages) 
                 and validate_signatures_certificate_chain(chain, error_messages)), error_messages
     except Exception as e:
@@ -101,9 +101,7 @@ def validate_certificate_chain(chain):
 
 
 def validate_purpose_certificate_chain(chain, error_messages):
-    print("FUCK1")
     result = certificate_hasnt_purposes(chain[0], ["key_cert_sign", "crl_sign"])
-    print("FUCK")
     for i in range(1, len(chain)):
         
         if not result:
@@ -111,12 +109,10 @@ def validate_purpose_certificate_chain(chain, error_messages):
             error_messages.append("The purpose of at least one chain certificate is wrong")
             return result
        
-        result &= certificate_hasnt_purposes(chain[i], ["digital_signature", "content_commitment", "key_encipherment", "data_encipherment"])
-        print(result)
+        result = certificate_hasnt_purposes(chain[i], ["digital_signature", "content_commitment", "key_encipherment", "data_encipherment"])
 
     if not result:
         error_messages.append("The purpose of at least one chain certificate is wrong")
-    print("1")
     return result
 
 
@@ -127,7 +123,6 @@ def validate_validity_certificate_chain(chain, error_messages):
         if datetime.now().timestamp() < dates[0] or datetime.now().timestamp() > dates[1]:
             error_messages.append("One of the chain certificates isn't valid")
             return False
-    print("2")
     return True
 
 
@@ -150,7 +145,6 @@ def validate_revocation_certificate_chain_crl(chain, error_messages):
                 if is_certificate_revoked(subject.serial_number,crl_url):
                     error_messages.append("One of the certificates is revoked")
                     return False
-    print("3")
     return True
 
 
@@ -170,7 +164,6 @@ def validate_signatures_certificate_chain(chain, error_messages):
         except InvalidSignature:
             error_messages.append("One of the certificates isn't signed by its issuer")
             return False
-    print("4")
     return True
 
 
@@ -178,7 +171,6 @@ def certificate_hasnt_purposes(certificate, purposes):
     result = True
     for purpose in purposes:
         result &= not getattr(certificate.extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE).value, purpose)
-        print(result)
     return result
 
 def load_private_key_file(path):
