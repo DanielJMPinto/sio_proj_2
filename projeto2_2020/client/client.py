@@ -10,6 +10,7 @@ sys.path.append(os.path.abspath('../utils'))
 import utils
 import PyKCS11
 import base64
+from cryptography.x509 import ObjectIdentifier
 
 logger = logging.getLogger('root')
 FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
@@ -17,8 +18,10 @@ logging.basicConfig(format=FORMAT)
 logger.setLevel(logging.INFO)
 
 SERVER_URL = 'http://127.0.0.1:8080'
+CLIENT_OID = ''
 
 def auth():
+    global CLIENT_OID
     client_nonce = os.urandom(64)
     
     req = requests.post(f'{SERVER_URL}/api/server_auth', data=json.dumps({"nonce":base64.b64encode(client_nonce).decode()}).encode())
@@ -63,9 +66,11 @@ def auth():
     if not session_success:
         logger.debug(f"Error establishing a new citizen card session: {session_data}")
         return False
+
+    client_cert = utils.certificate_cc(session_data)
     
     client_certs = {}
-    client_certs["client_cc_certificate"] = base64.b64encode(utils.certificate_cc(session_data)).decode()
+    client_certs["client_cc_certificate"] = base64.b64encode(client_cert).decode()
     client_certs["signed_server_nonce"] = base64.b64encode(utils.sign_nonce_cc(session_data, server_nonce)).decode()
     
 
@@ -77,6 +82,8 @@ def auth():
     data = req.json()
     if data["status"]:
         logger.debug(f"Sucessfully authenticated CC")
+        oid = ObjectIdentifier("2.5.4.5")
+        CLIENT_OID = utils.certificate_object(client_cert).subject.get_attributes_for_oid(oid)[0].value
         return True
     else:
         logger.debug(f"Could not authenticated CC")
@@ -95,7 +102,7 @@ def main():
     print("Contacting Server")
     
     # TODO: Secure the session
-    headers = {"Authorization" : 'True'}
+    headers = {"oid":CLIENT_OID}
 
     request = requests.Session()
     request.headers.update(headers)

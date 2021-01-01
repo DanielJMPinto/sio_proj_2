@@ -11,6 +11,7 @@ import sys
 sys.path.append(os.path.abspath('../utils'))
 import utils
 import base64
+from cryptography.x509 import ObjectIdentifier
 
 logger = logging.getLogger('root')
 FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
@@ -36,12 +37,13 @@ class MediaServer(resource.Resource):
 
     def __init__(self):
         self.server_nonce = None
+        self.authorized_users = []
 
     # Send the list of media files to clients
     def do_list(self, request):
 
-        auth = request.getHeader('Authorization')
-        if not auth:
+        oid = request.getHeader('oid')
+        if oid not in self.authorized_users:
            request.setResponseCode(401)
            return json.dumps('Not authorized').encode()
 
@@ -66,8 +68,8 @@ class MediaServer(resource.Resource):
     # Send a media chunk to the client
     def do_download(self, request):
 
-        auth = request.getHeader('Authorization')
-        if not auth:
+        oid = request.getHeader('oid')
+        if oid not in self.authorized_users:
            request.setResponseCode(401)
            return json.dumps('Not authorized').encode()
 
@@ -185,8 +187,8 @@ class MediaServer(resource.Resource):
                 status = utils.verify_signature(client_cc_certificate, signed_server_nonce, self.server_nonce)
 
         if status:
-            # oid = ObjectIdentifier("2.5.4.5")                                           # oid of citizens card's CI (civil id)
-            # self.user_id = cc_certificate.subject.get_attributes_for_oid(oid)[0].value
+            oid = ObjectIdentifier("2.5.4.5")
+            self.authorized_users.append(client_cc_certificate.subject.get_attributes_for_oid(oid)[0].value)
 
             logger.debug(f"User logged in with success")
             
