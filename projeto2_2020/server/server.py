@@ -7,6 +7,14 @@ import binascii
 import json
 import os
 import math
+import sys
+
+
+sys.path.append(os.path.abspath('../cryptography'))
+import symmetriccrypt
+import diffiehellman
+
+
 
 logger = logging.getLogger('root')
 FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
@@ -29,7 +37,15 @@ CHUNK_SIZE = 1024 * 4
 
 class MediaServer(resource.Resource):
     isLeaf = True
-
+    
+    #cryptography informations
+    client_chosen_ciphers = None
+    dh_parameters = None
+    dh_private_key = None
+    secret_key = None
+    
+    
+    
     # Send the list of media files to clients
     def do_list(self, request):
 
@@ -54,7 +70,6 @@ class MediaServer(resource.Resource):
         # Return list to client
         request.responseHeaders.addRawHeader(b"content-type", b"application/json")
         return json.dumps(media_list, indent=4).encode('latin')
-
 
     # Send a media chunk to the client
     def do_download(self, request):
@@ -118,6 +133,8 @@ class MediaServer(resource.Resource):
         request.responseHeaders.addRawHeader(b"content-type", b"application/json")
         return json.dumps({'error': 'unknown'}, indent=4).encode('latin')
 
+
+
     # Handle a GET request
     def render_GET(self, request):
         logger.debug(f'Received request for {request.uri}')
@@ -125,6 +142,22 @@ class MediaServer(resource.Resource):
         try:
             if request.path == b'/api/protocols':
                 return self.do_get_protocols(request)
+            elif request.path == b'/api/cipher-suite':
+                # Return list to client
+                # suported algorithms, cipher modes and hash functions
+                cipherModes = ["ECB", "CBF","CBC", "OFB"]
+                cipherAlgorithms = ['3DES','AES-128','ChaCha20']
+                hashFunctions = ["SHA-256", "SHA-384", "SHA-512", "MD5", "BLAKE-2"]
+                #ciphers
+                ciphers_list = [cipherAlgorithms, cipherModes, hashFunctions]
+                request.responseHeaders.addRawHeader(b"content-type", b"application/json")
+                return json.dumps(ciphers_list, indent=4).encode('latin')
+            elif request.path == b'/api/dh-parameters':
+                dh_parameters = diffiehellman.dh_generate_parameters()
+                self.dh_parameters = dh_parameters
+                request.responseHeaders.addRawHeader(b"content-type", b"application/json")
+                return json.dumps(dh_parameters, indent=4).encode('latin')
+
             #elif request.uri == 'api/key':
             #...
             #elif request.uri == 'api/auth':
@@ -147,8 +180,40 @@ class MediaServer(resource.Resource):
     # Handle a POST request
     def render_POST(self, request):
         logger.debug(f'Received POST for {request.uri}')
-        request.setResponseCode(501)
-        return b''
+        try:
+            if request.path == b'/api/dh-handshake':
+                #client public key (public number y)
+                client_public_number_y = json.loads(request.content.read())[0]
+                #generate my private key
+                self.dh_private_key = diffiehellman.dh_generate_private_key(self.dh_parameters)
+                #my public key (public number y)
+                dh_public_number_y = diffiehellman.dh_generate_public_key(self.dh_private_key)
+                #calculete secret key to be used to encrypt comunication
+                self.secret_key = diffiehellman.dh_calculete_common_secret(self.dh_private_key, client_public_number_y)
+
+                request.responseHeaders.addRawHeader(b"content-type", b"application/json")
+                return json.dumps([dh_public_number_y], indent=4).encode('latin')
+        
+            elif request.path == b'/api/chosen-ciphers':
+                #client public key (public number y)
+                self.client_chosen_ciphers = json.loads(request.content.read())
+                print(self.client_chosen_ciphers)
+
+                message = "cryptography pattern established"
+                message = symmetriccrypt.encrypt(self.secret_key,message,self.client_chosen_ciphers[0],self.client_chosen_ciphers[1])
+                print(message)
+                message = message.decode('latin')
+                print(message)
+                print(type(message))
+                request.responseHeaders.addRawHeader(b"content-type", b"application/json")
+                return json.dumps({"data":message}, indent=4).encode('latin')
+
+        except Exception as e:
+            logger.exception(e)
+            request.setResponseCode(500)
+            print("c")
+            request.responseHeaders.addRawHeader(b"content-type", b"text/plain")
+            return b''
 
 
 print("Server started")
