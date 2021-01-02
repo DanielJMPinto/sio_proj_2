@@ -38,10 +38,10 @@ def removepadding(messageBlock):
     return messageBlock 
 ####################################################################################################
 
-def generate_key(algorithm_name, salt):  
-    #get password to encryption
-    password = getpass()
-    password = password.encode()    #password string to binary
+def generate_key(algorithm_name, salt, password):  
+    #password string to binary
+    if type(password) != type(b""):
+        password = password.encode()    
 
     #select key length
     if algorithm_name == '3DES':
@@ -65,11 +65,15 @@ def generate_key(algorithm_name, salt):
     return key
 ####################################################################################################
 
-def encrypt(fileToEncrypt_name, fileToSave_name, algorithm_name, cipherMode_name=None):
+def encrypt(password, message, algorithm_name, cipherMode_name=None):
+    #encode message
+    if type(message) != type(b""):
+        message = message.encode()    
+
     #generate salt
     salt = os.urandom(16)
     #gemerate key
-    key = generate_key(algorithm_name, salt)
+    key = generate_key(algorithm_name, salt, password)
     #algorithm and block length
     if algorithm_name == 'ChaCha20':
         nonce = token_bytes(16)
@@ -103,17 +107,19 @@ def encrypt(fileToEncrypt_name, fileToSave_name, algorithm_name, cipherMode_name
     cipher = Cipher(algorithm, cipher_mode)
     #encrypt init
     encryptor = cipher.encryptor()
-    #open files
-    fileToEncrypt = open(fileToEncrypt_name, 'r')   #file with plain text
-    fileToSave = open(fileToSave_name, 'wb')        #file to store encrypted message
+    #encrypted_message
+    encrypted_message = b""
     #write salt, iv and nonce
-    fileToSave.write(b64encode(salt))
+    encrypted_message = encrypted_message + b64encode(salt)
     if iv != None:
-        fileToSave.write(b64encode(iv))
+        encrypted_message = encrypted_message + b64encode(iv)
     if algorithm_name == "ChaCha20":
-        fileToSave.write(b64encode(nonce))
+        encrypted_message = encrypted_message + b64encode(nonce)
+    #pointer to read message as blocks
+    pointer = 0
     while True:
-        block = fileToEncrypt.read(blockLength)
+        block = message[pointer:pointer+blockLength]
+        pointer += blockLength
         #last block length == blocklength
         if block == "":
             break
@@ -121,37 +127,35 @@ def encrypt(fileToEncrypt_name, fileToSave_name, algorithm_name, cipherMode_name
         if len(block) != blockLength:
             break
         #encrypt block
-        block = encryptor.update(block.encode())
+        block = encryptor.update(block)
         #write
-        fileToSave.write(b64encode(block))
+        encrypted_message = encrypted_message + b64encode(block)
     #padding
-    block = block.encode()
     if algorithm_name != "ChaCha20":
         block = addPadding(block, algorithm_name)
     #encrypt block
     block = encryptor.update(block)
     #write
-    fileToSave.write(b64encode(block))
+    encrypted_message = encrypted_message + b64encode(block)
 
-
-    #close files
-    fileToEncrypt.close()
-    fileToSave.close()
+    return encrypted_message
 ####################################################################################################
 
-def decrypt(fileToDecrypt_name, fileToSave_name, algorithm_name, cipherMode_name=None):
-    #open files
-    fileToDecrypt = open(fileToDecrypt_name, 'rb')
-    fileToSave = open(fileToSave_name, 'w')
+def decrypt(password, encrypted_message, algorithm_name, cipherMode_name=None):
+    message = ""
+    #pointer to read message as blocks
+    pointer = 0
     #get salt
-    salt = fileToDecrypt.read(ceil(16/3)*4)
+    salt = encrypted_message[pointer:pointer+ceil(16/3)*4]
+    pointer += ceil(16/3)*4
     salt = b64decode(salt)
     #gemerate key
-    key = generate_key(algorithm_name, salt)
+    key = generate_key(algorithm_name, salt, password)
     #algorithm and block length
     if algorithm_name == 'ChaCha20':
         #geting nonce
-        nonce = fileToDecrypt.read(ceil(16/3)*4)
+        nonce = encrypted_message[pointer:pointer+ceil(16/3)*4]
+        pointer += ceil(16/3)*4
         nonce = b64decode(nonce)
         algorithm = algorithms.ChaCha20(key, nonce)
         #chacha20 dont use block, but i will divide the message in blocks 
@@ -165,7 +169,8 @@ def decrypt(fileToDecrypt_name, fileToSave_name, algorithm_name, cipherMode_name
         algorithm = algorithms.AES(key)
     #get iv
     if algorithm_name != "ChaCha20" and cipherMode_name != "ECB":
-        iv = fileToDecrypt.read(ceil(blockLength/3)*4)
+        iv =  encrypted_message[pointer:pointer+ceil(blockLength/3)*4]
+        pointer+=ceil(blockLength/3)*4
         iv = b64decode(iv)
     #cipher mode
     if cipherMode_name == "CBC":
@@ -184,26 +189,26 @@ def decrypt(fileToDecrypt_name, fileToSave_name, algorithm_name, cipherMode_name
     #decrypt init
     decryptor = cipher.decryptor()
     
-    nextBlock = b64decode(fileToDecrypt.read(ceil(blockLength/3)*4))
+    nextBlock = b64decode(encrypted_message[pointer:pointer+ceil(blockLength/3)*4])
+    pointer+=ceil(blockLength/3)*4
     while True:
         block = nextBlock
-        nextBlock = b64decode(fileToDecrypt.read(ceil(blockLength/3)*4))
+        nextBlock = b64decode(encrypted_message[pointer:pointer+ceil(blockLength/3)*4])
+        pointer+=ceil(blockLength/3)*4
         #decrypt block
         block = decryptor.update(block)
         #block == last block
         if nextBlock == b"":
             break
         #write
-        fileToSave.write(block.decode())
+        message = message + block.decode()
     #padding
     if algorithm_name != "ChaCha20":
         block = removepadding(block)
     #write
-    fileToSave.write(block.decode())
+    message = message + block.decode()
 
-    #close files
-    fileToDecrypt.close()
-    fileToSave.close()
+    return message
 ####################################################################################################
 
 #suported algorithm and cipher modes
