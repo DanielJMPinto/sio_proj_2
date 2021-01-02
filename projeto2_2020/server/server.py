@@ -10,8 +10,10 @@ import math
 import sys
 sys.path.append(os.path.abspath('../utils'))
 import utils
+import rsa_utils
 import base64
 from cryptography.x509 import ObjectIdentifier
+from cryptography.hazmat.primitives import serialization
 
 logger = logging.getLogger('root')
 FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
@@ -120,12 +122,15 @@ class MediaServer(resource.Resource):
             f.seek(offset)
             data = f.read(CHUNK_SIZE)
 
+            data_signature = rsa_utils.rsa_sign(rsa_utils.load_rsa_private_key("../server_rsa_keys/server_rsa_key"), data)
+
             request.responseHeaders.addRawHeader(b"content-type", b"application/json")
             return json.dumps(
                     {
                         'media_id': media_id, 
                         'chunk': chunk_id, 
-                        'data': binascii.b2a_base64(data).decode('latin').strip()
+                        'data': binascii.b2a_base64(data).decode('latin').strip(),
+                        'data_signature': data_signature.decode('latin')
                     },indent=4
                 ).encode('latin')
 
@@ -195,6 +200,23 @@ class MediaServer(resource.Resource):
         return json.dumps({
                 "status":status
             }).encode('latin')
+
+    def rsa_exchange(self, request):
+        private_key, public_key = rsa_utils.generate_rsa_key_pair(2048, "../server_rsa_keys/server_rsa_key")
+
+        dict = request.content.read()
+        data = json.loads(dict)
+
+        client_rsa_pub_key = data["client_rsa_pub_key"].encode()
+
+        fileToSave_public_key = open("../server_rsa_keys/client_rsa_pub_key.pub", 'wb')
+        fileToSave_public_key.write(client_rsa_pub_key)
+        fileToSave_public_key.close()
+
+        return json.dumps({
+                "server_rsa_pub_key":public_key.public_bytes(encoding=serialization.Encoding.PEM,
+                                      format=serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+            }).encode('latin')
             
 
     # Handle a GET request
@@ -230,6 +252,8 @@ class MediaServer(resource.Resource):
                 return self.server_authenticate(request)
             elif request.uri == b'/api/client_auth':
                 return self.client_authenticate(request)
+            elif request.uri == b'/api/rsa_exchange':
+                return self.rsa_exchange(request)
             else:
                 request.responseHeaders.addRawHeader(b"content-type", b'text/plain')
                 return b'Methods: /api/protocols /api/list /api/download'

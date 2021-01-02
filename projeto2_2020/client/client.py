@@ -8,9 +8,11 @@ import time
 import sys
 sys.path.append(os.path.abspath('../utils'))
 import utils
+import rsa_utils
 import PyKCS11
 import base64
 from cryptography.x509 import ObjectIdentifier
+from cryptography.hazmat.primitives import serialization
 
 logger = logging.getLogger('root')
 FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
@@ -77,7 +79,7 @@ def auth():
     #finalize auth
     req = requests.post(f'{SERVER_URL}/api/client_auth', data=json.dumps(client_certs).encode())
     if req.status_code == 200:
-       logger.debug(f"Got Server Certs and Signed Nonce")
+       logger.debug(f"Server finished cc certificatcion chain")
     
     data = req.json()
     if data["status"]:
@@ -90,7 +92,26 @@ def auth():
         return False
 
     
+def rsa_exchange():
+    private_key, public_key = rsa_utils.generate_rsa_key_pair(2048, "../client_rsa_keys/client_rsa_key")
 
+    req = requests.post(f'{SERVER_URL}/api/rsa_exchange', 
+            data=json.dumps({
+                "client_rsa_pub_key":public_key.public_bytes(encoding=serialization.Encoding.PEM,
+                                      format=serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+            }).encode()
+        )
+
+    if req.status_code == 200:
+       logger.debug(f"Received Server public rsa Key ")
+
+    data = req.json()
+
+    server_rsa_pub_key = data["server_rsa_pub_key"].encode()
+
+    fileToSave_public_key = open("../client_rsa_keys/server_rsa_pub_key.pub", 'wb')
+    fileToSave_public_key.write(server_rsa_pub_key)
+    fileToSave_public_key.close()
 
 
 def main():
@@ -154,17 +175,23 @@ def main():
         chunk = req.json()
        
         # TODO: Process chunk
-
         data = binascii.a2b_base64(chunk['data'].encode('latin'))
+        data_signature = chunk['data_signature'].encode('latin')
+
+        if not rsa_utils.rsa_verify(rsa_utils.load_rsa_public_key("../client_rsa_keys/server_rsa_pub_key.pub"), data, data_signature):
+            print("The file sent from the server is not of trust")
+            sys.exit(0)
+        
         try:
             proc.stdin.write(data)
         except:
             break
 
 if __name__ == '__main__':
-    while True:
-        auth_result = auth()
-        if auth_result:
+    auth_result = auth()
+    if auth_result:
+        while True:
+            rsa_exchange()
             main()
             time.sleep(1)
         # try:
