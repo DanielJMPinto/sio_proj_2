@@ -83,7 +83,7 @@ def auth():
     
     req = requests.post(f'{SERVER_URL}/api/server_auth', data=json.dumps({"nonce":base64.b64encode(client_nonce).decode()}).encode())
     if req.status_code == 200:
-       logger.debug(f"Got Server Certs and Signed Nonce")
+       print("Received Server Certificate and Signed Nonce")
     
     
     #validate server certs
@@ -104,26 +104,27 @@ def auth():
     chain_completed = utils.construct_certificate_chain(chain, server_certificate, certificates)
     
     if not chain_completed:
-        logger.debug(f"Couldn't complete the certificate chain")
+        print("Couldn't complete the certificate chain")
         return False
         
     else:
         valid_chain, error_messages = utils.validate_certificate_chain(chain)
 
         if not valid_chain:
-            logger.debug(error_messages)
+            print(error_messages)
             return False  
         else:
             if not utils.verify_signature(server_certificate, signed_client_nonce, client_nonce):
                 return False
     
+    print("Sucsessfuly validated the server certicate chain and nonce signed by the server")
     #send cc info
     session_success, session_data = utils.cc_session()
 
     if not session_success:
-        logger.debug(f"Error establishing a new citizen card session: {session_data}")
+        print("Error establishing a new citizen card session: {session_data}")
         return False
-
+    print("Citizen Card Session Open")
     client_cert = utils.certificate_cc(session_data)
     
     client_certs = {}
@@ -134,16 +135,16 @@ def auth():
     #finalize auth
     req = requests.post(f'{SERVER_URL}/api/client_auth', data=json.dumps(client_certs).encode())
     if req.status_code == 200:
-       logger.debug(f"Server finished cc certificatcion chain")
+       print("Server finished citizen card certificatcion chain")
     
     data = req.json()
     if data["status"]:
-        logger.debug(f"Sucessfully authenticated CC")
+        print("Sucessfully authenticated CC")
         oid = ObjectIdentifier("2.5.4.5")
         CLIENT_OID = utils.certificate_object(client_cert).subject.get_attributes_for_oid(oid)[0].value
         return True
     else:
-        logger.debug(f"Could not authenticated CC")
+        print("Could not authenticated CC")
         return False
 
     
@@ -158,7 +159,7 @@ def rsa_exchange():
         )
 
     if req.status_code == 200:
-       logger.debug(f"Received Server public rsa Key ")
+       print("Received Server public rsa Key ")
 
     data = req.json()
 
@@ -236,7 +237,7 @@ def main():
         if not rsa_utils.rsa_verify(rsa_utils.load_rsa_public_key("../client_rsa_keys/server_rsa_pub_key.pub"), data, data_signature):
             print("The file sent from the server is not of trust")
             sys.exit(0)
-        
+        print("Chunk has a valid signature")
         try:
             proc.stdin.write(data)
         except:

@@ -151,6 +151,7 @@ class MediaServer(resource.Resource):
     def server_authenticate(self, request):
         dict = request.content.read()
         data = json.loads(dict)
+        logger.debug(f"Received Nonce from Client")
 
         client_nonce = base64.b64decode(data["nonce"].encode())
         
@@ -173,7 +174,7 @@ class MediaServer(resource.Resource):
         signed_server_nonce = base64.b64decode(data["signed_server_nonce"].encode())
         
         client_cc_certificate = utils.certificate_object(base64.b64decode(data["client_cc_certificate"].encode()))
-
+        logger.debug(f"Recived Client Certificate and signed Nonce")
 
         path = "../cc_certificates"
         certificates={}
@@ -195,12 +196,13 @@ class MediaServer(resource.Resource):
             valid_chain, error_messages = utils.validate_certificate_chain(chain)
 
             if not valid_chain:
-                logger.error(error_messages)
+                logger.debug(error_messages)
                 status = False
             else:
                 status = utils.verify_signature(client_cc_certificate, signed_server_nonce, self.server_nonce)
 
         if status:
+            logger.debug(f"Sucsessfuly validated the client certicate chain and nonce signed by the client")
             oid = ObjectIdentifier("2.5.4.5")
             self.authorized_users.append(client_cc_certificate.subject.get_attributes_for_oid(oid)[0].value)
 
@@ -222,6 +224,7 @@ class MediaServer(resource.Resource):
         fileToSave_public_key = open("../server_rsa_keys/client_rsa_pub_key.pub", 'wb')
         fileToSave_public_key.write(client_rsa_pub_key)
         fileToSave_public_key.close()
+        logger.debug(f"Received Client Public RSA Key")
 
         return json.dumps({
                 "server_rsa_pub_key":public_key.public_bytes(encoding=serialization.Encoding.PEM,
@@ -301,10 +304,9 @@ class MediaServer(resource.Resource):
 
                 message = "cryptography pattern established"
                 message = symmetriccrypt.encrypt(self.secret_key,message,self.client_chosen_ciphers[0],self.client_chosen_ciphers[1])
-                print(message)
+                
                 message = message.decode('latin')
-                print(message)
-                print(type(message))
+                
                 request.responseHeaders.addRawHeader(b"content-type", b"application/json")
                 return json.dumps({"data":message}, indent=4).encode('latin')
 
