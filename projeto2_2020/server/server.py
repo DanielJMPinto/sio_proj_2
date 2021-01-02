@@ -9,13 +9,11 @@ import os
 import math
 import sys
 
-sys.path.append(os.path.abspath('../cryptography'))
-import symmetriccrypt
-import diffiehellman
-
 sys.path.append(os.path.abspath('../utils'))
 import utils
 import rsa_utils
+import symmetriccrypt
+import diffiehellman
 import base64
 from cryptography.x509 import ObjectIdentifier
 from cryptography.hazmat.primitives import serialization

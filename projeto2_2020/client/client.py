@@ -8,13 +8,11 @@ import time
 import sys
 import random
 
-sys.path.append(os.path.abspath('../cryptography'))
-import diffiehellman
-import symmetriccrypt
-
 sys.path.append(os.path.abspath('../utils'))
 import utils
 import rsa_utils
+import diffiehellman
+import symmetriccrypt
 import PyKCS11
 import base64
 from cryptography.x509 import ObjectIdentifier
