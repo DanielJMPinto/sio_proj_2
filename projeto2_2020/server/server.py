@@ -50,6 +50,8 @@ class MediaServer(resource.Resource):
         self.dh_parameters = None
         self.dh_private_key = None
         self.secret_key = None
+        #catalog pass
+        self.catalog_password = "Music"
 
     # Send the list of media files to clients
     def do_list(self, request):
@@ -126,6 +128,13 @@ class MediaServer(resource.Resource):
         logger.debug(f'Download: chunk: {chunk_id}')
 
         offset = chunk_id * CHUNK_SIZE
+
+        '''
+        #minha ideia
+        f = open(os.path.join(CATALOG_BASE, media_item['file_name']), 'rb')
+        music = f.read()
+        music = symmetriccrypt.encrypt(self.catalog_password, music, "AES-128", "CBC")
+        '''
 
         # Open file, seek to correct position and return the chunk
         with open(os.path.join(CATALOG_BASE, media_item['file_name']), 'rb') as f:
