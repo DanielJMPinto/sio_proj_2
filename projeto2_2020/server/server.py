@@ -246,7 +246,7 @@ class MediaServer(resource.Resource):
             elif request.path == b'/api/cipher-suite':
                 # Return list to client
                 # suported algorithms, cipher modes and hash functions
-                cipherModes = ["ECB", "CBF","CBC", "OFB"]
+                cipherModes = ["ECB", "CFB","CBC", "OFB"]
                 cipherAlgorithms = ['3DES','AES-128','ChaCha20']
                 hashFunctions = ["SHA-256", "SHA-384", "SHA-512", "MD5", "BLAKE-2"]
                 #ciphers
