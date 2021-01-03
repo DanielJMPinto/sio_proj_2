@@ -188,7 +188,6 @@ def decrypt(password, encrypted_message, algorithm_name, cipherMode_name=None):
     cipher = Cipher(algorithm, cipher_mode)
     #decrypt init
     decryptor = cipher.decryptor()
-    
     nextBlock = b64decode(encrypted_message[pointer:pointer+ceil(blockLength/3)*4])
     pointer+=ceil(blockLength/3)*4
     while True:
@@ -210,6 +209,73 @@ def decrypt(password, encrypted_message, algorithm_name, cipherMode_name=None):
 
     return message
 ####################################################################################################
+
+def decrypt_file(password, fileToDecrypt_name, fileToSave_name, algorithm_name, cipherMode_name=None):
+    #open files
+    fileToDecrypt = open(fileToDecrypt_name, 'rb')
+    fileToSave = open(fileToSave_name, 'wb')
+    #get salt
+    salt = fileToDecrypt.read(ceil(16/3)*4)
+    salt = b64decode(salt)
+    #gemerate key
+    key = generate_key(algorithm_name, salt, password)
+    #algorithm and block length
+    if algorithm_name == 'ChaCha20':
+        #geting nonce
+        nonce = fileToDecrypt.read(ceil(16/3)*4)
+        nonce = b64decode(nonce)
+        algorithm = algorithms.ChaCha20(key, nonce)
+        #chacha20 dont use block, but i will divide the message in blocks 
+        blockLength = 128
+    elif algorithm_name == '3DES':
+        blockLength = 8
+        algorithm = algorithms.TripleDES(key)
+    else:
+        #AES-128
+        blockLength = 16
+        algorithm = algorithms.AES(key)
+    #get iv
+    if algorithm_name != "ChaCha20" and cipherMode_name != "ECB":
+        iv = fileToDecrypt.read(ceil(blockLength/3)*4)
+        iv = b64decode(iv)
+    #cipher mode
+    if cipherMode_name == "CBC":
+        cipher_mode = modes.CBC(iv)
+    elif cipherMode_name == "CFB":
+        cipher_mode = modes.CFB(iv)
+    elif cipherMode_name == "OFB":
+        cipher_mode = modes.OFB(iv)
+    elif cipherMode_name == "ECB":
+        cipher_mode = modes.ECB()
+    else:
+        #chacha20 -> dont use cipher mode
+        cipher_mode = None
+    #cipher definition
+    cipher = Cipher(algorithm, cipher_mode)
+    #decrypt init
+    decryptor = cipher.decryptor()
+    
+    nextBlock = b64decode(fileToDecrypt.read(ceil(blockLength/3)*4))
+    while True:
+        block = nextBlock
+        nextBlock = b64decode(fileToDecrypt.read(ceil(blockLength/3)*4))
+        #decrypt block
+        block = decryptor.update(block)
+        #block == last block
+        if nextBlock == b"":
+            break
+        #write
+        fileToSave.write(block)
+    #padding
+    if algorithm_name != "ChaCha20":
+        block = removepadding(block)
+    #write
+    fileToSave.write(block)
+
+
+    #close files
+    fileToDecrypt.close()
+    fileToSave.close()
 
 #suported algorithm and cipher modes
 cipherModes = ["ECB", "CFB","CBC", "OFB"]

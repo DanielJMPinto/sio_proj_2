@@ -278,6 +278,10 @@ def main():
         try:
             proc.stdin.write(data)
         except:
+            req = request.get(f'{SERVER_URL}/api/finished?id={media_item["id"]}')
+            if req.status_code == 200:
+                print(symmetriccrypt.decrypt(secret_key, req.json(), cipher_list[0], cipher_list[1]).decode())
+                
             break
 
 if __name__ == '__main__':

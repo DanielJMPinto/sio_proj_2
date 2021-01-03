@@ -36,7 +36,7 @@ CATALOG = { '898a08080d1840793122b7e118b27a95d117ebce':
             }
         }
 
-CATALOG_BASE = 'catalog'
+CATALOG_BASE = '../server/catalog'
 CHUNK_SIZE = 1024 * 4
 
 class MediaServer(resource.Resource):
@@ -131,34 +131,40 @@ class MediaServer(resource.Resource):
 
         
         #minha ideia
-        f = open(os.path.join(CATALOG_BASE, media_item['file_name']), 'rb')
-        music = f.read()
-        music = symmetriccrypt.decrypt(self.catalog_password, music, "AES-128", "CBC")
-        pointer = offset
-        data = music[pointer:pointer+CHUNK_SIZE]
-        
+        if not os.path.exists(os.path.join(CATALOG_BASE, media_item['file_name']+"1")):
+            symmetriccrypt.decrypt_file(self.catalog_password, os.path.join(CATALOG_BASE, media_item['file_name']), os.path.join(CATALOG_BASE, media_item['file_name']+"1"), "AES-128", "CBC")   
 
-        '''
+        
         # Open file, seek to correct position and return the chunk
-        with open(os.path.join(CATALOG_BASE, media_item['file_name']), 'rb') as f:
+        with open(os.path.join(CATALOG_BASE, media_item['file_name']+"1"), 'rb') as f:
             f.seek(offset)
             data = f.read(CHUNK_SIZE)
-        '''
-        data_signature = rsa_utils.rsa_sign(rsa_utils.load_rsa_private_key("../server_rsa_keys/server_rsa_key"), data)
+        
+            data_signature = rsa_utils.rsa_sign(rsa_utils.load_rsa_private_key("../server_rsa_keys/server_rsa_key"), data)
 
-        request.responseHeaders.addRawHeader(b"content-type", b"application/json")
-        return json.dumps(
-                {
-                    'media_id': symmetriccrypt.encrypt(self.secret_key, media_id, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'), 
-                    'chunk': symmetriccrypt.encrypt(self.secret_key, str(chunk_id), self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'), 
-                    'data': symmetriccrypt.encrypt(self.secret_key, binascii.b2a_base64(data).decode('latin').strip(), self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'),
-                    'data_signature': symmetriccrypt.encrypt(self.secret_key, data_signature, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')
-                },indent=4
-            ).encode('latin')
+            request.responseHeaders.addRawHeader(b"content-type", b"application/json")
+            return json.dumps(
+                    {
+                        'media_id': symmetriccrypt.encrypt(self.secret_key, media_id, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'), 
+                        'chunk': symmetriccrypt.encrypt(self.secret_key, str(chunk_id), self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'), 
+                        'data': symmetriccrypt.encrypt(self.secret_key, binascii.b2a_base64(data).decode('latin').strip(), self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'),
+                        'data_signature': symmetriccrypt.encrypt(self.secret_key, data_signature, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')
+                    },indent=4
+                ).encode('latin')
 
         # File was not open?
         request.responseHeaders.addRawHeader(b"content-type", b"application/json")
         return json.dumps({'error': symmetriccrypt.encrypt(self.secret_key, 'unknown', self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')}, indent=4).encode('latin')
+
+
+    def delete_files(self, request):
+        media_id = request.args.get(b'id', [None])[0]
+        media_id = media_id.decode('latin')
+        media_item = CATALOG[media_id]
+        os.remove(os.path.join(CATALOG_BASE, media_item['file_name']+"1"))
+
+        return json.dumps(symmetriccrypt.encrypt(self.secret_key, 'Finished Listening', self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')).encode()
+
 
     def server_authenticate(self, request):
         #client only can call this method if cryptography already is stablished
@@ -274,6 +280,7 @@ class MediaServer(resource.Resource):
         try:
             if request.path == b'/api/protocols':
                 return self.do_get_protocols(request)
+                
             #elif request.uri == 'api/key':
             #...
             
@@ -299,6 +306,8 @@ class MediaServer(resource.Resource):
                 return self.do_list(request)
             elif request.path == b'/api/download':
                 return self.do_download(request)
+            elif request.path == b'/api/finished':
+                return self.delete_files(request)
             else:
                 request.responseHeaders.addRawHeader(b"content-type", b'text/plain')
                 return b'Methods: /api/protocols /api/list /api/download'
