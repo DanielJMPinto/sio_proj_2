@@ -72,7 +72,7 @@ def load_cert_from_disk(file_name):
     return pem_data
 
 
-def construct_certificate_chain(chain, cert, certificates):
+def build_certificate_chain(chain, cert, certificates):
     chain.append(cert)
 
     issuer = cert.issuer.rfc4514_string()
@@ -82,7 +82,7 @@ def construct_certificate_chain(chain, cert, certificates):
         return True
 
     if issuer in certificates:
-        return construct_certificate_chain(chain, certificates[issuer], certificates)
+        return build_certificate_chain(chain, certificates[issuer], certificates)
     
     return False
 
@@ -90,9 +90,8 @@ def construct_certificate_chain(chain, cert, certificates):
 def validate_certificate_chain(chain):
     error_messages = []
     try:
-        # taking advantage of the python's lazy evaluation, we could define the validation order just with this instruction
         return (validate_purpose_certificate_chain(chain,error_messages)
-                and validate_validity_certificate_chain(chain, error_messages) 
+                and validity_certificate_chain_validation(chain, error_messages) 
                 and validate_revocation_certificate_chain_crl(chain,error_messages) 
                 and validate_signatures_certificate_chain(chain, error_messages)), error_messages
     except Exception as e:
@@ -101,7 +100,7 @@ def validate_certificate_chain(chain):
 
 
 def validate_purpose_certificate_chain(chain, error_messages):
-    result = certificate_hasnt_purposes(chain[0], ["key_cert_sign", "crl_sign"])
+    result = certificate_does_not_have_purposes(chain[0], ["key_cert_sign", "crl_sign"])
     for i in range(1, len(chain)):
         
         if not result:
@@ -109,14 +108,14 @@ def validate_purpose_certificate_chain(chain, error_messages):
             error_messages.append("The purpose of at least one chain certificate is wrong")
             return result
        
-        result = certificate_hasnt_purposes(chain[i], ["digital_signature", "content_commitment", "key_encipherment", "data_encipherment"])
+        result = certificate_does_not_have_purposes(chain[i], ["digital_signature", "content_commitment", "key_encipherment", "data_encipherment"])
 
     if not result:
         error_messages.append("The purpose of at least one chain certificate is wrong")
     return result
 
 
-def validate_validity_certificate_chain(chain, error_messages):
+def validity_certificate_chain_validation(chain, error_messages):
     for cert in chain:
         dates = (cert.not_valid_before.timestamp(), cert.not_valid_after.timestamp())
 
@@ -126,7 +125,7 @@ def validate_validity_certificate_chain(chain, error_messages):
     return True
 
 
-def is_certificate_revoked(serial_number, crl_url):
+def revoked_certificate_validation(serial_number, crl_url):
     r = requests.get(crl_url)
     try:
         crl = x509.load_der_x509_crl(r.content, default_backend())
@@ -142,7 +141,7 @@ def validate_revocation_certificate_chain_crl(chain, error_messages):
         for e in issuer.extensions:
             if isinstance(e.value, CRLDistributionPoints):
                 crl_url = e.value._distribution_points[0].full_name[0].value
-                if is_certificate_revoked(subject.serial_number,crl_url):
+                if revoked_certificate_validation(subject.serial_number,crl_url):
                     error_messages.append("One of the certificates is revoked")
                     return False
     return True
@@ -167,7 +166,7 @@ def validate_signatures_certificate_chain(chain, error_messages):
     return True
 
 
-def certificate_hasnt_purposes(certificate, purposes):
+def certificate_does_not_have_purposes(certificate, purposes):
     result = True
     for purpose in purposes:
         result &= not getattr(certificate.extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE).value, purpose)
@@ -175,11 +174,12 @@ def certificate_hasnt_purposes(certificate, purposes):
 
 def load_private_key_file(path):
     with open(path, "rb") as key_file:
-        return serialization.load_pem_private_key(
+        pem = serialization.load_pem_private_key(
             key_file.read(),
             password=None,
             backend=default_backend()
         )
+        return pem
 
 def sign_with_pk(pk, nonce):
     return pk.sign(nonce, padding.PKCS1v15(), hashes.SHA1())

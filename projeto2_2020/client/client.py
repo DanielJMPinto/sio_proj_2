@@ -101,7 +101,7 @@ def auth():
     certificates[cert.subject.rfc4514_string()] = cert
 
     chain=[]
-    chain_completed = utils.construct_certificate_chain(chain, server_certificate, certificates)
+    chain_completed = utils.build_certificate_chain(chain, server_certificate, certificates)
     
     if not chain_completed:
         print("Couldn't complete the certificate chain")

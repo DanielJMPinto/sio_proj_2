@@ -186,7 +186,7 @@ class MediaServer(resource.Resource):
                 certificates[cert.subject.rfc4514_string()] = cert
         
         chain = []
-        chain_completed = utils.construct_certificate_chain(chain, client_cc_certificate, certificates)
+        chain_completed = utils.build_certificate_chain(chain, client_cc_certificate, certificates)
 
         if not chain_completed:
             logger.debug(f"Couldn't complete the certificate chain")
