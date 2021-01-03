@@ -129,29 +129,32 @@ class MediaServer(resource.Resource):
 
         offset = chunk_id * CHUNK_SIZE
 
-        '''
+        
         #minha ideia
         f = open(os.path.join(CATALOG_BASE, media_item['file_name']), 'rb')
         music = f.read()
-        music = symmetriccrypt.encrypt(self.catalog_password, music, "AES-128", "CBC")
-        '''
+        music = symmetriccrypt.decrypt(self.catalog_password, music, "AES-128", "CBC")
+        pointer = offset
+        data = music[pointer:pointer+CHUNK_SIZE]
+        
 
+        '''
         # Open file, seek to correct position and return the chunk
         with open(os.path.join(CATALOG_BASE, media_item['file_name']), 'rb') as f:
             f.seek(offset)
             data = f.read(CHUNK_SIZE)
+        '''
+        data_signature = rsa_utils.rsa_sign(rsa_utils.load_rsa_private_key("../server_rsa_keys/server_rsa_key"), data)
 
-            data_signature = rsa_utils.rsa_sign(rsa_utils.load_rsa_private_key("../server_rsa_keys/server_rsa_key"), data)
-
-            request.responseHeaders.addRawHeader(b"content-type", b"application/json")
-            return json.dumps(
-                    {
-                        'media_id': symmetriccrypt.encrypt(self.secret_key, media_id, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'), 
-                        'chunk': symmetriccrypt.encrypt(self.secret_key, str(chunk_id), self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'), 
-                        'data': symmetriccrypt.encrypt(self.secret_key, binascii.b2a_base64(data).decode('latin').strip(), self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'),
-                        'data_signature': symmetriccrypt.encrypt(self.secret_key, data_signature, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')
-                    },indent=4
-                ).encode('latin')
+        request.responseHeaders.addRawHeader(b"content-type", b"application/json")
+        return json.dumps(
+                {
+                    'media_id': symmetriccrypt.encrypt(self.secret_key, media_id, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'), 
+                    'chunk': symmetriccrypt.encrypt(self.secret_key, str(chunk_id), self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'), 
+                    'data': symmetriccrypt.encrypt(self.secret_key, binascii.b2a_base64(data).decode('latin').strip(), self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'),
+                    'data_signature': symmetriccrypt.encrypt(self.secret_key, data_signature, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')
+                },indent=4
+            ).encode('latin')
 
         # File was not open?
         request.responseHeaders.addRawHeader(b"content-type", b"application/json")
