@@ -138,13 +138,13 @@ def auth():
 
     
     #encrypt client certs
-    client_cert = symmetriccrypt.encrypt(secret_key, client_cert, cipher_list[0], cipher_list[1]).decode('latin')
+    client_cert_enc = symmetriccrypt.encrypt(secret_key, client_cert, cipher_list[0], cipher_list[1]).decode('latin')
     signed_server_nonce = utils.sign_nonce_cc(session_data, server_nonce)
-    signed_server_nonce = symmetriccrypt.encrypt(secret_key, signed_server_nonce, cipher_list[0], cipher_list[1]).decode('latin')
+    signed_server_nonce_enc = symmetriccrypt.encrypt(secret_key, signed_server_nonce, cipher_list[0], cipher_list[1]).decode('latin')
     
     client_certs = {}
-    client_certs["client_cc_certificate"] = client_cert
-    client_certs["signed_server_nonce"] = signed_server_nonce
+    client_certs["client_cc_certificate"] = client_cert_enc
+    client_certs["signed_server_nonce"] = signed_server_nonce_enc
 
     #finalize auth
     req = requests.post(f'{SERVER_URL}/api/client_auth', data=json.dumps(client_certs).encode())
@@ -152,7 +152,8 @@ def auth():
        print("Server finished citizen card certificatcion chain")
     
     data = req.json()
-    if data["status"]:
+    status = symmetriccrypt.decrypt(secret_key, data["status"], cipher_list[0], cipher_list[1])
+    if  status.decode() == "True":
         print("Sucessfully authenticated CC")
         oid = ObjectIdentifier("2.5.4.5")
         CLIENT_OID = utils.certificate_object(client_cert).subject.get_attributes_for_oid(oid)[0].value
@@ -165,10 +166,16 @@ def auth():
 def rsa_exchange():
     private_key, public_key = rsa_utils.generate_rsa_key_pair(2048, "../client_rsa_keys/client_rsa_key")
 
+    pubk_enc = symmetriccrypt.encrypt(
+        secret_key, 
+        public_key.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo).decode(), 
+        cipher_list[0], 
+        cipher_list[1]
+    ).decode('latin')
+
     req = requests.post(f'{SERVER_URL}/api/rsa_exchange', 
             data=json.dumps({
-                "client_rsa_pub_key":public_key.public_bytes(encoding=serialization.Encoding.PEM,
-                                      format=serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+                "client_rsa_pub_key": pubk_enc
             }).encode()
         )
 
@@ -178,6 +185,7 @@ def rsa_exchange():
     data = req.json()
 
     server_rsa_pub_key = data["server_rsa_pub_key"].encode()
+    server_rsa_pub_key = symmetriccrypt.decrypt(secret_key, server_rsa_pub_key, cipher_list[0], cipher_list[1])
 
     fileToSave_public_key = open("../client_rsa_keys/server_rsa_pub_key.pub", 'wb')
     fileToSave_public_key.write(server_rsa_pub_key)
@@ -202,17 +210,28 @@ def main():
     if req.status_code == 200:
         print("Got Server List")
     else:
-        print(req.json())
+        print(symmetriccrypt.decrypt(secret_key, req.json(), cipher_list[0], cipher_list[1]).decode())
         sys.exit(0)
 
-    media_list = req.json()
-
+    media_list_enc = req.json()
+    media_list = []
+    id = 0
+    for item in media_list_enc:
+        media_list.append({
+            "id" : symmetriccrypt.decrypt(secret_key, media_list_enc[id]["id"], cipher_list[0], cipher_list[1]).decode(),
+            "name" : symmetriccrypt.decrypt(secret_key, media_list_enc[id]["name"], cipher_list[0], cipher_list[1]).decode(),
+            "description" : symmetriccrypt.decrypt(secret_key, media_list_enc[id]["description"], cipher_list[0], cipher_list[1]).decode(),
+            "chunks" : int(symmetriccrypt.decrypt(secret_key, media_list_enc[id]["chunks"], cipher_list[0], cipher_list[1]).decode()),
+            "duration" : int(symmetriccrypt.decrypt(secret_key, media_list_enc[id]["duration"], cipher_list[0], cipher_list[1]).decode())
+        })
+        id += 1
 
     # Present a simple selection menu    
     idx = 0
     print("MEDIA CATALOG\n")
     for item in media_list:
         print(f'{idx} - {media_list[idx]["name"]}')
+        idx+=1
     print("----")
 
     while True:
@@ -230,7 +249,7 @@ def main():
     # Example: Download first file
     media_item = media_list[selection]
     print(f"Playing {media_item['name']}")
-
+    print(media_item['chunks'])
     # Detect if we are running on Windows or Linux
     # You need to have ffplay or ffplay.exe in the current folder
     # In alternative, provide the full path to the executable
@@ -242,11 +261,15 @@ def main():
     # Get data from server and send it to the ffplay stdin through a pipe
     for chunk in range(media_item['chunks'] + 1):
         req = request.get(f'{SERVER_URL}/api/download?id={media_item["id"]}&chunk={chunk}')
+        if not req.status_code == 200:
+            print(symmetriccrypt.decrypt(secret_key, req.json()['error'], cipher_list[0], cipher_list[1]).decode())
+            sys.exit(0)
+        
         chunk = req.json()
        
         # TODO: Process chunk
-        data = binascii.a2b_base64(chunk['data'].encode('latin'))
-        data_signature = chunk['data_signature'].encode('latin')
+        data = binascii.a2b_base64(symmetriccrypt.decrypt(secret_key, chunk['data'].encode('latin'), cipher_list[0], cipher_list[1]))
+        data_signature = symmetriccrypt.decrypt(secret_key, chunk['data_signature'], cipher_list[0], cipher_list[1])
 
         if not rsa_utils.rsa_verify(rsa_utils.load_rsa_public_key("../client_rsa_keys/server_rsa_pub_key.pub"), data, data_signature):
             print("The file sent from the server is not of trust")

@@ -57,7 +57,7 @@ class MediaServer(resource.Resource):
         oid = request.getHeader('oid')
         if oid not in self.authorized_users:
            request.setResponseCode(401)
-           return json.dumps('Not authorized').encode()
+           return json.dumps(symmetriccrypt.encrypt(self.secret_key, 'Not Authorized', self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')).encode()
 
 
         # Build list
@@ -65,11 +65,11 @@ class MediaServer(resource.Resource):
         for media_id in CATALOG:
             media = CATALOG[media_id]
             media_list.append({
-                'id': media_id,
-                'name': media['name'],
-                'description': media['description'],
-                'chunks': math.ceil(media['file_size'] / CHUNK_SIZE),
-                'duration': media['duration']
+                'id': symmetriccrypt.encrypt(self.secret_key, media_id, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'),
+                'name': symmetriccrypt.encrypt(self.secret_key, media['name'], self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'),
+                'description': symmetriccrypt.encrypt(self.secret_key, media['description'], self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'),
+                'chunks': symmetriccrypt.encrypt(self.secret_key, str(math.ceil(media['file_size'] / CHUNK_SIZE)), self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'),
+                'duration': symmetriccrypt.encrypt(self.secret_key, str(media['duration']), self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')
                 })
 
         # Return list to client
@@ -83,7 +83,7 @@ class MediaServer(resource.Resource):
         oid = request.getHeader('oid')
         if oid not in self.authorized_users:
            request.setResponseCode(401)
-           return json.dumps('Not authorized').encode()
+           return json.dumps(symmetriccrypt.encrypt(self.secret_key, 'Not Authorized', self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')).encode()
 
         logger.debug(f'Download: args: {request.args}')
         
@@ -94,7 +94,7 @@ class MediaServer(resource.Resource):
         if media_id is None:
             request.setResponseCode(400)
             request.responseHeaders.addRawHeader(b"content-type", b"application/json")
-            return json.dumps({'error': 'invalid media id'}).encode('latin')
+            return json.dumps({'error': symmetriccrypt.encrypt(self.secret_key, 'invalid media id', self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')}).encode('latin')
         
         # Convert bytes to str
         media_id = media_id.decode('latin')
@@ -103,7 +103,7 @@ class MediaServer(resource.Resource):
         if media_id not in CATALOG:
             request.setResponseCode(404)
             request.responseHeaders.addRawHeader(b"content-type", b"application/json")
-            return json.dumps({'error': 'media file not found'}).encode('latin')
+            return json.dumps({'error': symmetriccrypt.encrypt(self.secret_key, 'media file not found', self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')}).encode('latin')
         
         # Get the media item
         media_item = CATALOG[media_id]
@@ -121,7 +121,7 @@ class MediaServer(resource.Resource):
         if not valid_chunk:
             request.setResponseCode(400)
             request.responseHeaders.addRawHeader(b"content-type", b"application/json")
-            return json.dumps({'error': 'invalid chunk id'}).encode('latin')
+            return json.dumps({'error': symmetriccrypt.encrypt(self.secret_key, 'invalid chunk id', self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')}).encode('latin')
             
         logger.debug(f'Download: chunk: {chunk_id}')
 
@@ -137,16 +137,16 @@ class MediaServer(resource.Resource):
             request.responseHeaders.addRawHeader(b"content-type", b"application/json")
             return json.dumps(
                     {
-                        'media_id': media_id, 
-                        'chunk': chunk_id, 
-                        'data': binascii.b2a_base64(data).decode('latin').strip(),
-                        'data_signature': data_signature.decode('latin')
+                        'media_id': symmetriccrypt.encrypt(self.secret_key, media_id, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'), 
+                        'chunk': symmetriccrypt.encrypt(self.secret_key, str(chunk_id), self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'), 
+                        'data': symmetriccrypt.encrypt(self.secret_key, binascii.b2a_base64(data).decode('latin').strip(), self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin'),
+                        'data_signature': symmetriccrypt.encrypt(self.secret_key, data_signature, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')
                     },indent=4
                 ).encode('latin')
 
         # File was not open?
         request.responseHeaders.addRawHeader(b"content-type", b"application/json")
-        return json.dumps({'error': 'unknown'}, indent=4).encode('latin')
+        return json.dumps({'error': symmetriccrypt.encrypt(self.secret_key, 'unknown', self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')}, indent=4).encode('latin')
 
     def server_authenticate(self, request):
         #client only can call this method if cryptography already is stablished
@@ -170,12 +170,12 @@ class MediaServer(resource.Resource):
         #encrypt
         certificate = symmetriccrypt.encrypt(self.secret_key, certificate, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')
         signed_client_nonce = symmetriccrypt.encrypt(self.secret_key, signed_client_nonce, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')
-        self.server_nonce = symmetriccrypt.encrypt(self.secret_key, self.server_nonce, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')
+        server_nonce = symmetriccrypt.encrypt(self.secret_key, self.server_nonce, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')
 
         return json.dumps({
                 "server_certificate": certificate,
                 "signed_client_nonce": signed_client_nonce,
-                "server_nonce": self.server_nonce
+                "server_nonce": server_nonce
             }).encode('latin')
 
     def client_authenticate(self, request):
@@ -222,10 +222,11 @@ class MediaServer(resource.Resource):
             self.authorized_users.append(client_cc_certificate.subject.get_attributes_for_oid(oid)[0].value)
 
             logger.debug(f"User logged in with success")
-            
 
+        status_enc = symmetriccrypt.encrypt(self.secret_key, str(status), self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')
+            
         return json.dumps({
-                "status":status
+                "status":status_enc
             }).encode('latin')
 
     def rsa_exchange(self, request):
@@ -235,15 +236,22 @@ class MediaServer(resource.Resource):
         data = json.loads(dict)
 
         client_rsa_pub_key = data["client_rsa_pub_key"].encode()
+        client_rsa_pub_key = symmetriccrypt.decrypt(self.secret_key, client_rsa_pub_key, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1])
 
         fileToSave_public_key = open("../server_rsa_keys/client_rsa_pub_key.pub", 'wb')
         fileToSave_public_key.write(client_rsa_pub_key)
         fileToSave_public_key.close()
         logger.debug(f"Received Client Public RSA Key")
 
+        pubk_enc = symmetriccrypt.encrypt(
+            self.secret_key, 
+            public_key.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo).decode(), 
+            self.client_chosen_ciphers[0], 
+            self.client_chosen_ciphers[1]
+        ).decode('latin')
+
         return json.dumps({
-                "server_rsa_pub_key":public_key.public_bytes(encoding=serialization.Encoding.PEM,
-                                      format=serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+                "server_rsa_pub_key":pubk_enc
             }).encode('latin')
             
 
