@@ -70,7 +70,7 @@ def cryptography():
     message = req.json()
     message = message["data"].encode('latin')
     #decrypt message
-    message = symmetriccrypt.decrypt(secret_key,message,cipher_list[0], cipher_list[1])
+    message = symmetriccrypt.decrypt(secret_key,message,cipher_list[0], cipher_list[1]).decode()
     print(f"server message:  {message}")
 
     return dh_parameters, dh_private_key, secret_key, cipher_list
@@ -80,20 +80,28 @@ def cryptography():
 def auth():
     global CLIENT_OID
     client_nonce = os.urandom(64)
-    
-    req = requests.post(f'{SERVER_URL}/api/server_auth', data=json.dumps({"nonce":base64.b64encode(client_nonce).decode()}).encode())
+    #encrypt nonce
+    encrypted_client_nonce = symmetriccrypt.encrypt(secret_key, client_nonce, cipher_list[0], cipher_list[1]).decode('latin')
+
+    req = requests.post(f'{SERVER_URL}/api/server_auth', data=json.dumps({"nonce":encrypted_client_nonce}).encode())
     if req.status_code == 200:
        print("Received Server Certificate and Signed Nonce")
     
     
     #validate server certs
     data = req.json()
-
-    server_nonce = base64.b64decode(data["server_nonce"].encode())
-
-    server_certificate = utils.certificate_object_from_pem(base64.b64decode(data["server_certificate"].encode()))
-    signed_client_nonce = base64.b64decode(data["signed_client_nonce"].encode())
-
+    
+    #decrypt data
+    server_nonce = data["server_nonce"].encode('latin')
+    server_nonce = symmetriccrypt.decrypt(secret_key, server_nonce, cipher_list[0], cipher_list[1])
+    signed_client_nonce = data["signed_client_nonce"].encode('latin')
+    signed_client_nonce = symmetriccrypt.decrypt(secret_key, signed_client_nonce, cipher_list[0], cipher_list[1])
+    server_certificate = data["server_certificate"].encode('latin')
+    server_certificate = symmetriccrypt.decrypt(secret_key, server_certificate, cipher_list[0], cipher_list[1])
+    
+    
+    server_certificate = utils.certificate_object_from_pem(server_certificate)
+    
     cert_data = utils.load_cert_from_disk("../server_ca/SIOServerCA.pem")
     cert = utils.certificate_object_from_pem(cert_data)
 
@@ -127,10 +135,16 @@ def auth():
     print("Citizen Card Session Open")
     client_cert = utils.certificate_cc(session_data)
     
-    client_certs = {}
-    client_certs["client_cc_certificate"] = base64.b64encode(client_cert).decode()
-    client_certs["signed_server_nonce"] = base64.b64encode(utils.sign_nonce_cc(session_data, server_nonce)).decode()
+
     
+    #encrypt client certs
+    client_cert = symmetriccrypt.encrypt(secret_key, client_cert, cipher_list[0], cipher_list[1]).decode('latin')
+    signed_server_nonce = utils.sign_nonce_cc(session_data, server_nonce)
+    signed_server_nonce = symmetriccrypt.encrypt(secret_key, signed_server_nonce, cipher_list[0], cipher_list[1]).decode('latin')
+    
+    client_certs = {}
+    client_certs["client_cc_certificate"] = client_cert
+    client_certs["signed_server_nonce"] = signed_server_nonce
 
     #finalize auth
     req = requests.post(f'{SERVER_URL}/api/client_auth', data=json.dumps(client_certs).encode())

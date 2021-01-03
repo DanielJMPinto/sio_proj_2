@@ -142,7 +142,7 @@ def encrypt(password, message, algorithm_name, cipherMode_name=None):
 ####################################################################################################
 
 def decrypt(password, encrypted_message, algorithm_name, cipherMode_name=None):
-    message = ""
+    message = b""
     #pointer to read message as blocks
     pointer = 0
     #get salt
@@ -201,16 +201,16 @@ def decrypt(password, encrypted_message, algorithm_name, cipherMode_name=None):
         if nextBlock == b"":
             break
         #write
-        message = message + block.decode()
+        message = message + block
     #padding
     if algorithm_name != "ChaCha20":
         block = removepadding(block)
     #write
-    message = message + block.decode()
+    message = message + block
 
     return message
 ####################################################################################################
 
 #suported algorithm and cipher modes
-cipherModes = ["ECB", "CBF","CBC", "OFB"]
+cipherModes = ["ECB", "CFB","CBC", "OFB"]
 cipherAlgorithms = ['3DES','AES-128','ChaCha20']

@@ -149,31 +149,46 @@ class MediaServer(resource.Resource):
         return json.dumps({'error': 'unknown'}, indent=4).encode('latin')
 
     def server_authenticate(self, request):
+        #client only can call this method if cryptography already is stablished
+        if self.secret_key == None:
+            # o que devo retornar para o cliente nesse caso ?
+            pass
         dict = request.content.read()
         data = json.loads(dict)
         logger.debug(f"Received Nonce from Client")
 
-        client_nonce = base64.b64decode(data["nonce"].encode())
-        
+        #decrypt nonce
+        client_nonce = data["nonce"].encode('latin')
+        client_nonce = symmetriccrypt.decrypt(self.secret_key, client_nonce, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1])
+
         private_key = utils.load_private_key_file("../server_pk/SIOServerCertKey.pem")
         signed_client_nonce = utils.sign_with_pk(private_key, client_nonce)
         certificate = utils.load_cert_from_disk("../server_cert/SIOServerCert.pem")
 
         self.server_nonce = os.urandom(64)
 
+        #encrypt
+        certificate = symmetriccrypt.encrypt(self.secret_key, certificate, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')
+        signed_client_nonce = symmetriccrypt.encrypt(self.secret_key, signed_client_nonce, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')
+        self.server_nonce = symmetriccrypt.encrypt(self.secret_key, self.server_nonce, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1]).decode('latin')
+
         return json.dumps({
-                "server_certificate": base64.b64encode(certificate).decode(),
-                "signed_client_nonce": base64.b64encode(signed_client_nonce).decode(),
-                "server_nonce": base64.b64encode(self.server_nonce).decode()
+                "server_certificate": certificate,
+                "signed_client_nonce": signed_client_nonce,
+                "server_nonce": self.server_nonce
             }).encode('latin')
 
     def client_authenticate(self, request):
         dict = request.content.read()
         data = json.loads(dict)
 
-        signed_server_nonce = base64.b64decode(data["signed_server_nonce"].encode())
-        
-        client_cc_certificate = utils.certificate_object(base64.b64decode(data["client_cc_certificate"].encode()))
+        #decrypt nonce
+        signed_server_nonce = data["signed_server_nonce"].encode('latin')
+        signed_server_nonce = symmetriccrypt.decrypt(self.secret_key, signed_server_nonce, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1])
+        client_cc_certificate = data["client_cc_certificate"].encode('latin')
+        client_cc_certificate = symmetriccrypt.decrypt(self.secret_key, client_cc_certificate, self.client_chosen_ciphers[0], self.client_chosen_ciphers[1])
+
+        client_cc_certificate = utils.certificate_object(client_cc_certificate)
         logger.debug(f"Recived Client Certificate and signed Nonce")
 
         path = "../cc_certificates"
@@ -304,7 +319,6 @@ class MediaServer(resource.Resource):
 
                 message = "cryptography pattern established"
                 message = symmetriccrypt.encrypt(self.secret_key,message,self.client_chosen_ciphers[0],self.client_chosen_ciphers[1])
-                
                 message = message.decode('latin')
                 
                 request.responseHeaders.addRawHeader(b"content-type", b"application/json")
